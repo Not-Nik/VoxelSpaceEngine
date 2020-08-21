@@ -12,6 +12,16 @@ void drawVerticalLine(vsGlobalGameState * gameState, int x, int yTop, int yBotto
     }
 }
 
+int ifloorf(float f)
+{
+    return (int)f;
+}
+
+unsigned char ucclampf(float i)
+{
+    return i > 255 ? 255 : ifloorf(i) < 0 ? 0 : ifloorf(i);
+}
+
 void render(vsGlobalGameState * gameState)
 {
     vsMap * map = gameState->map;
@@ -20,9 +30,6 @@ void render(vsGlobalGameState * gameState)
 
     int scaleHeight = 250;
 
-    int mapwidthperiod = map->width - 1;
-    int mapheightperiod = map->height - 1;
-
     float sinang = sinf(camera->rotation.y);
     float cosang = cosf(camera->rotation.y);
 
@@ -30,53 +37,45 @@ void render(vsGlobalGameState * gameState)
     for (int i = 0; i < screenData->width; i++) hiddeny[i] = screenData->height;
 
     float deltaZ = 1.0f;
-
     float z = 1.0f;
+
     Color background = GetColor(screenData->backgroundColor);
 
     // Create a temp vector of all heights on screen per line and interpolate
     // Maybe supersampling?
 
-    int mapIndexes[screenData->width];
-
-    while (z < camera->distance)
+    while (z < (float)camera->distance)
     {
-        vsVector2f pLeft = {(-cosang * z - sinang * z) + camera->position.x, (sinang * z - cosang * z) + camera->position.y};
-        vsVector2f pRight = {(cosang * z - sinang * z) + camera->position.x, (-sinang * z - cosang * z) + camera->position.y};
+        float saNew = sinang * z;
+        float caNew = cosang * z;
 
-        float dX = (pRight.x - pLeft.x) / screenData->width;
-        float dY = (pRight.y - pLeft.y) / screenData->width;
+        vsVector2f pLeft = {(-caNew - saNew) + camera->position.x,  (saNew - caNew) + camera->position.y};
+        vsVector2f pRight = {(caNew - saNew) + camera->position.x, (-saNew - caNew) + camera->position.y};
 
-        float yFactor = z / camera->distance;
-        float revertedYFactor = 1 - z / camera->distance;
+        float dX = (pRight.x - pLeft.x) / (float)screenData->width;
+        float dY = (pRight.y - pLeft.y) / (float)screenData->width;
+
+        float yFactor = z / (float)camera->distance;
+        float revertedYFactor = 1 - z / (float)camera->distance;
 
         for (int i = 0; i < screenData->width; i++)
         {
-            int mapIndex = (((int) pLeft.y & mapwidthperiod) << map->shift) +
-                           ((int) pLeft.x & mapheightperiod) | 0;
-            mapIndexes[i] = mapIndex;
+            int mapIndex = ((ifloorf(pLeft.y) & map->width - 1) << map->shift) +
+                            (ifloorf(pLeft.x) & map->height - 1) | 0;
             pLeft.x += dX;
             pLeft.y += dY;
-        }
 
-        for (int i = 0; i < screenData->width; i++)
-        {
-            int mapIndex = mapIndexes[i];
-            int heightOnScreen = (camera->position.z - map->altitude[mapIndex].r) / z * scaleHeight + camera->rotation.x;
+            int heightOnScreen = ifloorf((camera->position.z - (float)map->altitude[mapIndex].r) / z * (float)scaleHeight + camera->rotation.x);
             Color color = map->color[mapIndex];
-            int r = color.r * revertedYFactor + background.r * yFactor;
-            r = r > 255 ? 255 : r;
-            int g = color.g * revertedYFactor + background.g * yFactor;
-            g = g > 255 ? 255 : g;
-            int b = color.b * revertedYFactor + background.b * yFactor;
-            b = b > 255 ? 255 : b;
-            unsigned char cR = r;
-            unsigned char cG = g;
-            unsigned char cB = b;
-            color = (Color) {cR, cG, cB, 255};
+            color = (Color) {
+                    ucclampf((float)color.r * revertedYFactor + (float)background.r * yFactor),
+                    ucclampf((float)color.g * revertedYFactor + (float)background.g * yFactor),
+                    ucclampf((float)color.b * revertedYFactor + (float)background.b * yFactor),
+                    255};
             drawVerticalLine(gameState, i, heightOnScreen, hiddeny[i], color);
             if (heightOnScreen < hiddeny[i]) hiddeny[i] = heightOnScreen;
         }
+
         z += deltaZ;
         deltaZ += 0.005f;
     }
