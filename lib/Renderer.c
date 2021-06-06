@@ -3,80 +3,69 @@
 #include <Renderer.h>
 #include <math.h>
 
-void drawVerticalLine(vsGlobalGameState * gameState, int x, int yTop, int yBottom, Color color)
-{
-    vsScreenData * screenData = gameState->screenData;
-    for (int i = yTop; i < yBottom; i++)
-    {
+#include <raylib.h>
+
+void drawVerticalLine(vsGlobalGameState *gameState, int x, int yTop, int yBottom, Color color) {
+    vsScreenData *screenData = gameState->screenData;
+    for (int i = yTop; i < yBottom; i++) {
         screenData->screen[x + i * screenData->width] = color;
     }
 }
 
-int ifloorf(float f)
-{
-    return (int)f;
-}
+void render(vsGlobalGameState *gameState) {
+    vsMap *map = gameState->map;
+    vsCamera *cam = gameState->camera;
+    vsScreenData *screenData = gameState->screenData;
 
-unsigned char ucclampf(float i)
-{
-    return i > 255 ? 255 : ifloorf(i) < 0 ? 0 : ifloorf(i);
-}
+    const int mapWidthPeriod = map->width - 1;
+    const int mapHeightPeriod = map->height - 1;
 
-void render(vsGlobalGameState * gameState)
-{
-    vsMap * map = gameState->map;
-    vsCamera * camera = gameState->camera;
-    vsScreenData * screenData = gameState->screenData;
+    float sinang = sinf(cam->rotation.y);
+    float cosang = cosf(cam->rotation.y);
 
-    int scaleHeight = 250;
+    int hiddenY[screenData->width];
+    for (int i = 0; i < screenData->width; i++) hiddenY[i] = screenData->height;
 
-    float sinang = sinf(camera->rotation.y);
-    float cosang = cosf(camera->rotation.y);
+    float deltaZ = 0.1f; // Initial LOD
+    float z = 1.0f; // Near plane
 
-    int hiddeny[screenData->width];
-    for (int i = 0; i < screenData->width; i++) hiddeny[i] = screenData->height;
-
-    float deltaZ = 1.0f;
-    float z = 1.0f;
-
-    Color background = GetColor(screenData->backgroundColor);
-
-    // Create a temp vector of all heights on screen per line and interpolate
+    // Create a temp vector of all heights on screen per line and do linear interpolation
     // Maybe supersampling?
 
-    while (z < (float)camera->distance)
-    {
-        float saNew = sinang * z;
-        float caNew = cosang * z;
+    float fovFactor = (cam->fov / 90);
 
-        vsVector2f pLeft = {(-caNew - saNew) + camera->position.x,  (saNew - caNew) + camera->position.y};
-        vsVector2f pRight = {(caNew - saNew) + camera->position.x, (-saNew - caNew) + camera->position.y};
+    while (z < (float) cam->distance * fovFactor) {
+        // Left
+        float plx = -cosang * z - sinang * z / fovFactor;
+        float ply = sinang * z - cosang * z / fovFactor;
+        // Right
+        float prx = cosang * z - sinang * z / fovFactor;
+        float pry = -sinang * z - cosang * z / fovFactor;
 
-        float dX = (pRight.x - pLeft.x) / (float)screenData->width;
-        float dY = (pRight.y - pLeft.y) / (float)screenData->width;
+        float dx = (prx - plx) / (float) screenData->width;
+        float dy = (pry - ply) / (float) screenData->width;
+        plx += cam->position.x;
+        ply += cam->position.z;
 
-        float yFactor = z / (float)camera->distance;
-        float revertedYFactor = 1 - z / (float)camera->distance;
+        float invz = 1.f / z * 350.f; // Vertical stretch
 
-        for (int i = 0; i < screenData->width; i++)
-        {
-            int mapIndex = ((ifloorf(pLeft.y) & map->width - 1) << map->shift) +
-                            (ifloorf(pLeft.x) & map->height - 1) | 0;
-            pLeft.x += dX;
-            pLeft.y += dY;
+        for (int i = 0; i < screenData->width; i++) {
+            int mapOffset = (((int) ply & mapWidthPeriod) << map->shift) + ((int) plx & mapHeightPeriod);
+            float heightOnScreen = (cam->position.y - (float) map->altitude[mapOffset].r) * invz + cam->rotation.x;
 
-            int heightOnScreen = ifloorf((camera->position.z - (float)map->altitude[mapIndex].r) / z * (float)scaleHeight + camera->rotation.x);
-            Color color = map->color[mapIndex];
-            color = (Color) {
-                    ucclampf((float)color.r * revertedYFactor + (float)background.r * yFactor),
-                    ucclampf((float)color.g * revertedYFactor + (float)background.g * yFactor),
-                    ucclampf((float)color.b * revertedYFactor + (float)background.b * yFactor),
-                    255};
-            drawVerticalLine(gameState, i, heightOnScreen, hiddeny[i], color);
-            if (heightOnScreen < hiddeny[i]) hiddeny[i] = heightOnScreen;
+            if (mapOffset > map->width * map->height || mapOffset < 0) continue;
+            if ((int) heightOnScreen > screenData->height) heightOnScreen = (float) screenData->height;
+            if (heightOnScreen < 0) heightOnScreen = 0;
+
+            if ((int) heightOnScreen < hiddenY[i]) {
+                drawVerticalLine(gameState, i, (int) heightOnScreen, hiddenY[i], map->color[mapOffset]);
+                hiddenY[i] = (int) heightOnScreen;
+            }
+            plx += dx;
+            ply += dy;
         }
 
-        z += deltaZ;
-        deltaZ += 0.005f;
+        z += deltaZ * fovFactor;
+        deltaZ += 0.00025f; // LOD decrease
     }
 }

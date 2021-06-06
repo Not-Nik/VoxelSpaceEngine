@@ -4,52 +4,61 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
-vsCamera * createCamera()
-{
-    vsCamera * camera = (vsCamera *)malloc(sizeof(vsCamera));
-    camera->position.x = 512;
-    camera->position.y = 800;
-    camera->position.z = 200;
+vsCamera *createCamera() {
+    vsCamera *camera = (vsCamera *) malloc(sizeof(vsCamera));
+    camera->position.x = 0;
+    camera->position.y = 0;
+    camera->position.z = 0;
 
     camera->rotation.y = 0.0f;
     camera->rotation.x = 100.0f;
     camera->distance = 1000;
+    camera->fov = 90;
     return camera;
 }
 
-vsMap * createMap(const char * colorMapPath, const char * heightMapPath)
-{
-    vsMap * map = (vsMap *) malloc(sizeof(vsMap));
-    map->width = 1024;
-    map->height = 1024;
-    map->shift = 10;
+bool isWhole(float x) {
+    return x == floorf(x);
+}
+
+vsMap *createMap(const char *colorMapPath, const char *heightMapPath) {
+    vsMap *map = (vsMap *) malloc(sizeof(vsMap));
+
     Image height = LoadImage(heightMapPath);
     Image color = LoadImage(colorMapPath);
-    if (height.width != 1024 || height.height != 1024 ||
-        color.width != 1024 || color.height != 1024)
-    {
-        puts("Image size not 1024 * 1024!");
-        exit(-1);
+
+    if (!isWhole(log2f((float) color.width)) || !isWhole(log2f((float) color.height)) || !isWhole(log2f((float) height.width))
+        || !isWhole(log2f((float) height.height))) {
+        puts("Image dimensions must be powers of two");
+        exit(1);
     }
-    map->altitude = GetImageData(height);
-    map->color = GetImageData(color);
+
+    if (color.width != color.height || height.width != height.height || color.width != height.width) {
+        puts("Image dimensions must be the same an both axis");
+        exit(1);
+    }
+
+    map->width = color.width;
+    map->height = color.height;
+    map->shift = (int) log2f((float) color.width);
+    map->altitude = LoadImageColors(height);
+    map->color = LoadImageColors(color);
     return map;
 }
 
-vsScreenData * createScreenData(int w, int h)
-{
-    vsScreenData * screenData = (vsScreenData *) malloc(sizeof(vsScreenData));
+vsScreenData *createScreenData(int w, int h) {
+    vsScreenData *screenData = (vsScreenData *) malloc(sizeof(vsScreenData));
     screenData->width = w;
     screenData->height = h;
     screenData->backgroundColor = 0x6699ff90;
-    screenData->screen = (Color *)malloc(sizeof(Color) * screenData->width * screenData->height);
+    screenData->screen = (Color *) malloc(sizeof(Color) * screenData->width * screenData->height);
     return screenData;
 }
 
-vsInput * createInput()
-{
-    vsInput * input = (vsInput *) malloc(sizeof(vsInput));
+vsInput *createInput() {
+    vsInput *input = (vsInput *) malloc(sizeof(vsInput));
     input->forwardBackward = 0;
     input->leftRight = 0;
     input->upDown = 0;
@@ -60,16 +69,15 @@ vsInput * createInput()
     return input;
 }
 
-vsGlobalGameState * createGlobalGameState(const char * colorMapPath, const char * heightMapPath, int w, int h)
-{
-    vsGlobalGameState * globalGameState = (vsGlobalGameState *) malloc(sizeof(vsGlobalGameState));
+vsGlobalGameState *createGlobalGameState(const char *colorMapPath, const char *heightMapPath, int w, int h) {
+    vsGlobalGameState *globalGameState = (vsGlobalGameState *) malloc(sizeof(vsGlobalGameState));
     globalGameState->camera = createCamera();
     globalGameState->map = createMap(colorMapPath, heightMapPath);
     globalGameState->screenData = createScreenData(w, h);
     globalGameState->input = createInput();
     globalGameState->updateRunning = false;
-    globalGameState->time = GetTime();
-    globalGameState->timeLastFrame = GetTime();
+    globalGameState->time = (float) 0;
+    globalGameState->timeLastFrame = (float) 0;
     globalGameState->frames = 0;
     return globalGameState;
 }

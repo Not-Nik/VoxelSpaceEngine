@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(VoxelSpaceEngine)
 
-find_package(raylib 3.0.0 REQUIRED)
+add_subdirectory(raylib)
 
 add_compile_options(-O3)
 
